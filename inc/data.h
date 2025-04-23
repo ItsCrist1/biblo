@@ -25,4 +25,6 @@ struct User {
          const std::vector<std::pair<u32,u32>>& shoppingCart = {},
          const std::vector<std::pair<u32,u32>>& boughtBooks = {}, const double balance = 0.0);
     User(const User& other) = default;
+
+    User& operator=(const User& other) = default;
 };

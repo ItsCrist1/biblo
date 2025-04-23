@@ -13,7 +13,6 @@
 static const std::string SaveFile = "data.dat";
 static const std::string BooksFile = "books.txt";
 
-static User user;
 static std::vector<Book> books;
 
 i32 main() {
@@ -29,7 +28,8 @@ i32 main() {
 
     setBooksFromFile(books, BooksFile);
     Library library (SaveFile);
-    
+    library.GreetMenu();
+
     std::wcout << getCol(RGB{0,255,0}) << L"\n\nAll data saved successfully\nGoodbye!" << getCol() << std::endl;
     
 #ifndef _WIN32

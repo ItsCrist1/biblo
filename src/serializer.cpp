@@ -51,7 +51,7 @@ void Serializer::LoadUser(std::ifstream& is, User& user) const {
     LoadBooks(is, user.shoppingCart);
     LoadBooks(is, user.boughtBooks);
 
-    user.balance = readBF<u32>(is);
+    user.balance = readBF<double>(is);
 }
 
 void Serializer::SaveData(const std::vector<User>& users) const {
