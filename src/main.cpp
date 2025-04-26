@@ -11,9 +11,19 @@
 #endif
 
 static const std::string SaveFile = "data.dat";
-static const std::string BooksFile = "books.txt";
 
-static std::vector<Book> books;
+static Books books;
+
+// makes every '_' outputted by std::wcout a space (' ')
+struct SimpleBuf : std::wstreambuf {
+    std::wstreambuf* orig;
+    SimpleBuf(std::wstreambuf* o) : orig(o) {}
+
+    int_type overflow(int_type ch) override {
+        if (ch == L'_') ch = L' ';
+        return orig->sputc(ch);
+    }
+};
 
 i32 main() {
     #ifndef _WIN32
@@ -26,8 +36,11 @@ i32 main() {
     }
     #endif
 
-    setBooksFromFile(books, BooksFile);
-    Library library (SaveFile);
+    std::wcout.rdbuf(new SimpleBuf(std::wcout.rdbuf())); // set the custom buffer to render instances of '_' as spaces (' ')
+
+    ReadBooksFromFile(books, BooksFile);
+
+    Library library (SaveFile, books);
     library.GreetMenu();
 
     std::wcout << getCol(RGB{0,255,0}) << L"\n\nAll data saved successfully\nGoodbye!" << getCol() << std::endl;

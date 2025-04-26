@@ -16,6 +16,7 @@ void cleanup(i32);
 std::wstring stw(const std::string&);
 
 void clearScreen();
+void setCursorPos(const u32, const u32);
 
 template <typename T>
 T readBF(std::ifstream&);
@@ -36,9 +37,9 @@ struct RGB {
     RGB(u8 c=0);
 };
 
-std::wstring getCol(const RGB);
-std::wstring getCol();
+const std::wstring getCol(const RGB);
+const std::wstring getCol();
 void flushInputBuffer();
 void clearInputBuffer();
-char getChar();
-void getCharV();
+const char getChar(const bool = true);
+const char getCharV();

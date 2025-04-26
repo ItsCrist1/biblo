@@ -47,6 +47,16 @@ void clearScreen() {
     #endif
 }
 
+void setCursorPos(const u32 x, const u32 y) {
+    #ifdef _WIN32
+    COORD coord = {static_cast<SHORT>(x), static_cast<SHORT>(y)};
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+    #else
+    std::wcout << L"\033[" << y << L';' << x << L'H';
+    std::cout.flush();
+    #endif
+}
+
 template u8 readBF<u8>(std::ifstream& is);
 template wchar_t readBF<wchar_t>(std::ifstream& is);
 template u32 readBF<u32>(std::ifstream& is);
@@ -102,13 +112,13 @@ std::wstring readWstr(std::ifstream& is) {
 RGB::RGB(u8 r, u8 g, u8 b) : r(r), g(g), b(b) {}
 RGB::RGB(u8 c) : r(c), g(c), b(c) {}
 
-std::wstring getCol(const RGB rgb) {
+const std::wstring getCol(const RGB rgb) {
     std::wstringstream wss;
     wss << L"\033[38;2;" << static_cast<u32>(rgb.r) << L';' << static_cast<u32>(rgb.g) << L';' << static_cast<u32>(rgb.b) << L'm';
     return wss.str();
 }
 
-std::wstring getCol() {
+const std::wstring getCol() {
     return L"\033[0m";
 }
 
@@ -125,10 +135,11 @@ void clearInputBuffer() {
     std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
 }
 
-char getChar() {
-    #ifdef _WIN32
+const char getChar(const bool transformArrowKeyInputs) {
+#ifdef _WIN32
     int c = _getch();
-    if (c == 224 || c == 0) {
+
+    if ((c == 224 || c == 0) && transformArrowKeyInputs)
         switch(_getch()) {
             case 72: return 'w';
             case 80: return 's';
@@ -137,12 +148,14 @@ char getChar() {
             
             default: return 0;
         }
-    } return c == 13 ? ' ' : (char)c;
-    #else
+    
+    return c == 13 ? ' ' : (char)c;
+#else
     setTerminalState(newt);
     char c = getchar();
     setTerminalState(oldt);
-    if(c == '\033') {
+
+    if(c == '\033' && transformArrowKeyInputs) {
         getchar();
         switch(getchar()) {
             case 'A': return 'w';
@@ -150,11 +163,13 @@ char getChar() {
             case 'C': return 'd';
             case 'D': return 'a';
         }
-    } return c == '\n' ? ' ' : c;
-    #endif
+    } 
+    
+    return c;
+#endif
 }
 
-void getCharV() {
+const char getCharV() {
     std::wcout << L"\nPress any key to continue...";
-    getChar();
+    return getChar();
 }
