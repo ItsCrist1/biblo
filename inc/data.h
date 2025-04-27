@@ -5,6 +5,16 @@
 #include <vector>
 #include <utility>
 
+enum class SortType { Name, Author, Id, Price, Quantity };
+
+struct Settings {
+    SortType sortType;
+    bool sortingAscending, caseSensitive;
+
+    Settings(const SortType, const bool, const bool);
+    Settings();
+};
+
 struct Book {
     u32 id;
     std::wstring title, author, description;

@@ -11,6 +11,7 @@
 #endif
 
 static const std::string SaveFile = "data.dat";
+static const std::string SettingsFile = "settings.dat";
 
 static Books books;
 
@@ -40,7 +41,7 @@ i32 main() {
 
     ReadBooksFromFile(books, BooksFile);
 
-    Library library (SaveFile, books);
+    Library library (SaveFile, SettingsFile, books);
     library.GreetMenu();
 
     std::wcout << getCol(RGB{0,255,0}) << L"\n\nAll data saved successfully\nGoodbye!" << getCol() << std::endl;

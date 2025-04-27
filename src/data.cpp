@@ -1,6 +1,11 @@
 #include "data.h"
 #include <sstream>
 
+Settings::Settings(const SortType sortType, const bool sortingAscending, const bool caseSensitive)
+: sortType(sortType), sortingAscending(sortingAscending), caseSensitive(caseSensitive) {}
+
+Settings::Settings() : sortType(SortType::Name), sortingAscending(true), caseSensitive(true) {}
+
 Book::Book(const u32 id, const std::wstring& title, const std::wstring& author, 
            const std::wstring& description, const double price, const u32 quantity) 
            : id(id),  title(title), author(author), description(description)

@@ -57,6 +57,7 @@ void setCursorPos(const u32 x, const u32 y) {
     #endif
 }
 
+template bool readBF<bool>(std::ifstream& is);
 template u8 readBF<u8>(std::ifstream& is);
 template wchar_t readBF<wchar_t>(std::ifstream& is);
 template u32 readBF<u32>(std::ifstream& is);
@@ -69,6 +70,7 @@ T readBF(std::ifstream& is) {
     return n;
 }
 
+template void writeBF<bool>(std::ofstream& is, bool n);
 template void writeBF<u8>(std::ofstream& is, u8 n);
 template void writeBF<wchar_t>(std::ofstream& is, wchar_t n);
 template void writeBF<u32>(std::ofstream& is, u32 n);

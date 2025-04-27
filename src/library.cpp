@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <functional>
 
 const std::wstring SuccessColor = getCol({ 0, 255, 0 });
 const std::wstring ErrorColor = getCol({ 255, 0, 0 });
@@ -16,9 +17,13 @@ static const u32 MaximumUsernameLength = 20;
 static const u32 MinimumPasswordLength = 7;
 static const u32 MaximumPasswordLength = 50;
 
-Library::Library(const std::string& SaveFile, const Books& books) : serializer(SaveFile), books(books) {
+Library::Library(const std::string& SaveFile, const std::string& SettingsFile, const Books& books) 
+: serializer(SaveFile, SettingsFile), books(books) {
     if(std::filesystem::is_regular_file(SaveFile)) serializer.LoadData(users);
     else serializer.SaveData(users);
+
+    if(std::filesystem::is_regular_file(SettingsFile)) serializer.LoadSettings(settings);
+    else serializer.SaveSettings(settings);
 }
 
 std::shared_ptr<User> Library::isValidName(const std::wstring& name) const {
@@ -73,42 +78,151 @@ const bool Library::showPasswordError(const bool condition, const std::wstring& 
 }
 
 const bool Library::isWstringInt(const std::wstring& str) const {
-    return std::all_of(str.begin(), str.end(), [](wchar_t c) { return std::iswdigit(c); });
+    return std::all_of(str.begin(), str.end(), [](const wchar_t c) { return std::iswdigit(c); });
+}
+
+void Library::searchQuerySettingsMenu() {
+    const auto addCursor = [](const bool f) {
+        return getCol() + (f ? L" *\n" : L"\n");
+    };
+
+    u8 idx = 0;
+    
+    while(true) {
+        clearScreen();
+        
+        std::wcout << SuccessColor << L"Search Query Settings\n\n"
+                   << L"Sorting Type:\n"
+                   << (settings.sortType == SortType::Name ? SelectedColor : UnselectedColor) << L"1) By Name" << addCursor(idx == 0) 
+                   << (settings.sortType == SortType::Author ? SelectedColor : UnselectedColor) << L"2) By Author" << addCursor(idx == 1)
+                   << (settings.sortType == SortType::Id ? SelectedColor : UnselectedColor) << L"3) By Id" << addCursor(idx == 2)
+                   << (settings.sortType == SortType::Price ? SelectedColor : UnselectedColor) << L"4) By Price" << addCursor(idx == 3)
+                   << (settings.sortType == SortType::Quantity ? SelectedColor : UnselectedColor) << L"5) By Quantity" << addCursor(idx == 4)
+                   << (settings.sortingAscending ? SuccessColor : ErrorColor) << L"\n6) Sorting: " << (settings.sortingAscending ? L"Ascending" : L"Descending") << addCursor(idx == 5)
+                   << (settings.caseSensitive ? SuccessColor : ErrorColor) << L"\n7) Case Sensitivity: " << (settings.caseSensitive ? L"Yes" : L"No") << addCursor(idx == 6)
+                   << getCol();
+
+        const char c = getChar();
+
+        if(std::isdigit(c)) {
+            const u8 digit = c - '0' - 1;
+
+            if(digit > 6) {
+                clearScreen();
+                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and 7\n" << getCol();
+                getCharV();
+            } else idx = digit;
+
+            continue;
+        }
+
+        switch(c) {
+            case 'w': case 'a':
+            idx = idx == 0 ? 6 : idx - 1; break;
+
+            case 's': case 'd':
+            idx = idx == 6 ? 0 : idx + 1; break;
+
+            case 'q': return;
+
+            default:
+
+            switch(idx) {
+                case 0: settings.sortType = SortType::Name; break;
+                case 1: settings.sortType = SortType::Author; break;
+                case 2: settings.sortType = SortType::Id; break;
+                case 3: settings.sortType = SortType::Price; break;
+                case 4: settings.sortType = SortType::Quantity; break;
+                case 5: settings.sortingAscending = !settings.sortingAscending; break;
+                case 6: settings.caseSensitive = !settings.caseSensitive; break;
+            }
+
+            serializer.SaveSettings(settings);
+        }
+    }
+}
+
+std::wstring Library::toLowerWstr(std::wstring wstr) const {
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+    [](const wchar_t c) { return std::towlower(c); });
+
+    return wstr;
 }
 
 const std::vector<u32> Library::searchQuery(std::wstring query) const {
     std::replace(query.begin(), query.end(), L'_', L' ');
+    if(!settings.caseSensitive) query = toLowerWstr(query);
 
     std::vector<u32> results;
+    if(query.empty()) {
+        results = books.GetIDs();
+    } else {
+        const bool isOnlyDigits = isWstringInt(query);
 
-    if(isWstringInt(query)) {
-        const u32 id = std::stoi(query);
-
-        for(const auto& [bookId, _] : books) 
-            if(isIntContained(bookId, id)) results.push_back(bookId);
+        if(isOnlyDigits) {
+            const u32 id = std::stoi(query);
+    
+            for(const auto& [bookId, _] : books) 
+                if(isIntContained(bookId, id)) results.push_back(bookId);
+        }
+    
+        for(const auto& [bookId, book] : books)
+            if((settings.caseSensitive ? book.title : toLowerWstr(book.title)).find(query) != std::wstring::npos 
+            || (settings.caseSensitive ? book.author : toLowerWstr(book.author)).find(query) != std::wstring::npos)
+                if(!(isOnlyDigits && std::find(results.begin(), results.end(), bookId) != results.end())) // avoid duplicates from previous id search
+                    results.push_back(bookId);
     }
 
-    for(const auto& [bookId, book] : books)
-        if(book.title.find(query) != std::wstring::npos || book.author.find(query) != std::wstring::npos)
-            results.push_back(bookId);
+    std::function<bool(u32, u32)> comparator;
+    
+    switch(settings.sortType) {
+        case SortType::Name:
+        comparator = [this](const u32 id1, const u32 id2) {
+            return toLowerWstr(books.GetBook(id1).title) < toLowerWstr(books.GetBook(id2).title);
+        }; break;
+
+        case SortType::Author:
+        comparator = [this](const u32 id1, const u32 id2) {
+            return toLowerWstr(books.GetBook(id1).author) < toLowerWstr(books.GetBook(id2).author);
+        }; break;
+
+        case SortType::Id:
+        comparator = [](const u32 id1, const u32 id2) {
+            return id1 < id2;
+        }; break;
+
+        case SortType::Price:
+        comparator = [this](const u32 id1, const u32 id2) {
+            return books.GetBook(id1).price < books.GetBook(id2).price;
+        }; break;
+
+        case SortType::Quantity:
+        comparator = [this](const u32 id1, const u32 id2) {
+            return books.GetBook(id1).quantity < books.GetBook(id2).quantity;
+        }; break;
+    }
+
+    std::sort(results.begin(), results.end(), [this, comparator](const u32 id1, const u32 id2) {
+        return settings.sortingAscending ? comparator(id1, id2) : comparator(id2, id1);
+    });
 
     return results;
 }
 
 void Library::searchMenu() {
     u32 idx = 0;
-    bool inTextbox = true;
+    bool inTextbox = false;
     std::wstring query = L"";
 
     while (true) {
         clearScreen();
         const u32 sz = books.GetSize();
-        const std::vector<u32> ids = books.GetIDs();
+        const std::vector<u32> ids = searchQuery(query);
         
         std::wcout << L"Query: " << query << L"\n\n";
 
         u32 currentBookIdx = 0;
-        for(const u32 id : query == L"" ? ids : searchQuery(query)) {
+        for(const u32 id : ids) {
             const Book& book = books.GetBook(id);
             std::wcout << (idx == currentBookIdx++ && !inTextbox ? SelectedColor : UnselectedColor) 
                        << currentBookIdx << L") " 
@@ -123,7 +237,8 @@ void Library::searchMenu() {
             if (c == 13 || c == 9 || c == 27 ) inTextbox = false; // ENTER, TAB or ESC 
             else if (c == 127 && !query.empty()) query.pop_back(); // BACKSPACE
             else if (std::iswprint(c)) query += c;
-
+            
+            idx = 0;
             continue;
         }
 
@@ -132,7 +247,7 @@ void Library::searchMenu() {
 
             if (digit > sz-1) {
                 clearScreen();
-                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz-1 << getCol();
+                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz << getCol();
                 getCharV();
             } else idx = digit;
 
@@ -147,6 +262,8 @@ void Library::searchMenu() {
             idx = idx == sz-1 ? 0 : idx + 1; break;
 
             case 9: inTextbox = true; break; // TAB
+
+            case 'n': searchQuerySettingsMenu(); break;
             case 'q': return;
 
             default:
@@ -181,6 +298,35 @@ void Library::searchMenu() {
     }
 }
 
+void Library::giveBooksBack(u32& idx, const u32 sz, const bool fromCart) {
+    const std::vector<u32> ids = books.GetIDs();
+
+    clearScreen();
+
+    const u32 id = std::next(fromCart ? user->shoppingCart.begin() : user->boughtBooks.begin(), idx)->first;
+    const std::wstring& title = books.GetBook(id).title;
+    const u32 stock = fromCart ? user->shoppingCart[id] : user->boughtBooks[id];
+
+    std::wcout << L"How many copies of " << title << L" do you wish to " << (fromCart ? L"remove" : L"return") << L" [0-" << stock << L"] ";
+
+    u32 quantity;
+    std::cin >> quantity;
+    clearInputBuffer();
+
+    if(quantity == 0) return;
+
+    if(quantity >= stock)
+        (fromCart ? user->shoppingCart : user->boughtBooks).erase(id),
+        idx = idx == sz-1 ? sz-2 : idx;
+    else (fromCart ? user->shoppingCart : user->boughtBooks).at(id) -= quantity;
+    
+    books.ChangeBook(id, quantity);
+    if(!fromCart) user->balance += books.GetBook(id).price * quantity;
+
+    serializer.SaveData(users);
+    WriteBooksToFile(books, BooksFile);
+}
+
 void Library::cartMenu() {
     u32 idx = 0;
 
@@ -209,7 +355,7 @@ void Library::cartMenu() {
 
             if(digit > sz-1) {
                 clearScreen();
-                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz-1 << getCol() << '\n';
+                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz << getCol() << '\n';
                 getCharV();
             } else idx = digit;
             
@@ -219,40 +365,15 @@ void Library::cartMenu() {
         switch(c) {
             case 'w':
             case 'd':
-            idx = idx == 0 ? sz-1 : idx - 1; break;
+            idx = idx == 0 ? sz-1 : idx - 1;
             break;
 
             case 's':
             case 'a':
-            idx = idx == sz-1 ? 0 : idx + 1; break;
+            idx = idx == sz-1 ? 0 : idx + 1;
             break;
 
-            case 'j': {
-                const std::vector<u32> ids = books.GetIDs();
-
-                clearScreen();
-
-                const u32 id = std::next(user->shoppingCart.begin(), idx)->first;
-                const std::wstring& title = books.GetBook(id).title;
-                const u32 inCart = user->shoppingCart[id];
-
-                std::wcout << L"How many copies of " << title << L" do you wish to remove? [0-" << inCart << L"] ";
-
-                u32 quantity;
-                std::cin >> quantity;
-                clearInputBuffer();
-
-                if(quantity == 0) continue;
-                if(quantity >= inCart)
-                    quantity = inCart, 
-                    user->shoppingCart.erase(id),
-                    idx = idx == sz-1 ? sz-2 : idx;
-                else user->shoppingCart.at(id) -= quantity;
-                books.ChangeBook(id, quantity);
-
-                serializer.SaveData(users);
-                WriteBooksToFile(books, BooksFile);
-            } break;
+            case 'j': giveBooksBack(idx, sz, true); break;
 
             case 'q': return;
 
@@ -269,7 +390,7 @@ void Library::cartMenu() {
             }
             
             user->balance -= price;
-            user->boughtBooks.insert(user->shoppingCart.begin(), user->shoppingCart.end());
+            user->boughtBooks.merge(user->shoppingCart);
             user->shoppingCart.clear();
         
             serializer.SaveData(users);
@@ -298,16 +419,15 @@ void Library::returnMenu() {
 
             std::wcout << (idx == currentBookIdx++ ? SelectedColor : UnselectedColor) << currentBookIdx << L") " << book.getBookOutput(entry) << getCol();
         }
-
         
         const char c = getChar();
         
         if(std::isdigit(c)) {
             const u32 digit = c - '0' - 1;
             
-            if(idx > sz-1) {
+            if(digit > sz-1) {
                 clearScreen();
-                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz-1 << getCol() << '\n';
+                std::wcout << ErrorColor << L"Error: Digit input must be between 1 and " << sz << getCol() << '\n';
                 getCharV();
             } else idx = digit;
             
@@ -327,13 +447,12 @@ void Library::returnMenu() {
             
             case 'q': return;
             
-            default:
-            
+            default: 
+            giveBooksBack(idx, sz, false); 
+            serializer.SaveData(users);
             break;
         }
     }
-
-    serializer.SaveData(users);
 }
 
 void Library::execMainMenu(const u8 idx) {
@@ -346,7 +465,7 @@ void Library::execMainMenu(const u8 idx) {
             clearInputBuffer();
 
             if (amount < 0) std::wcout << ErrorColor << L"Invalid amount\n" << getCol(), 
-                               getCharV();
+                            getCharV();
             else user->balance += amount;
         } break;
 

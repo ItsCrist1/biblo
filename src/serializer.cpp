@@ -24,7 +24,8 @@ void WriteBooksToFile(const Books& books, const std::string& file) {
     wos.close();
 }
 
-Serializer::Serializer(const std::string& SaveFile) : SaveFile(SaveFile) {}
+Serializer::Serializer(const std::string& SaveFile, const std::string& SettingsFile) 
+: SaveFile(SaveFile), SettingsFile(SettingsFile) {}
 
 void Serializer::SaveBooks(std::ofstream& os, const std::map<u32,u32>& books) const {
     writeBF<u32>(os, books.size());
@@ -79,6 +80,26 @@ void Serializer::LoadData(std::vector<std::shared_ptr<User>>& users) const {
     users = std::vector<std::shared_ptr<User>> (sz, std::make_shared<User>());
     
     for(std::shared_ptr<User> user : users) LoadUser(is, user);
+
+    is.close();
+}
+
+void Serializer::SaveSettings(const Settings& settings) const {
+    std::ofstream os (SettingsFile, std::ios::binary);
+
+    writeBF<u32>(os, static_cast<u32>(settings.sortType));
+    writeBF<bool>(os, settings.sortingAscending);
+    writeBF<bool>(os, settings.caseSensitive);
+
+    os.close();
+}
+
+void Serializer::LoadSettings(Settings& settings) const {
+    std::ifstream is (SettingsFile, std::ios::binary);
+
+    settings.sortType = static_cast<SortType>(readBF<u32>(is));
+    settings.sortingAscending = readBF<bool>(is);
+    settings.caseSensitive = readBF<bool>(is);
 
     is.close();
 }
